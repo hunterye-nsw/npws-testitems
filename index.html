@@ -8,7 +8,7 @@
     <!-- MapLibre GL CSS -->
     <link href='https://cdn.jsdelivr.net/npm/maplibre-gl@3.6.2/dist/maplibre-gl.css' rel='stylesheet' />
     <!-- MapLibre Draw CSS -->
-    <link href='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.0/mapbox-gl-draw.css' rel='stylesheet' type='text/css' />
+    <link href='https://unpkg.com/@mapbox/mapbox-gl-draw@1.4.3/dist/mapbox-gl-draw.css' rel='stylesheet' type='text/css' />
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <!-- Leaflet Draw CSS -->
@@ -17,6 +17,8 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/openlayers/openlayers.github.io@master/en/v6.15.1/css/ol.css">
     <!-- ArcGIS CSS -->
     <link rel="stylesheet" href="https://js.arcgis.com/4.27/esri/themes/light/main.css">
+    <!-- Leaflet VectorGrid CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.vectorgrid@latest/dist/Leaflet.VectorGrid.css" />
     
     <style>
         .container {
@@ -124,26 +126,167 @@
             padding: 0;
             margin: 0;
         }
+
+        .map-btn#npws-toggle {
+            background: #e67e22;
+        }
+        .map-btn#npws-toggle:hover {
+            background: #d35400;
+        }
+        .map-btn#npws-toggle.active {
+            background: #27ae60;
+        }
+
+        .alert-form {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+            width: 300px;
+            display: none; /* Hide by default */
+        }
+
+        .form-group {
+            margin-bottom: 10px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .form-group select,
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+
+        .submit-btn {
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        .submit-btn:hover {
+            background: #219a52;
+        }
+
+        /* Add overlay style */
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+            display: none;
+        }
+
+        .form-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .cancel-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 3px;
+            cursor: pointer;
+            flex: 1;
+        }
+
+        .cancel-btn:hover {
+            background: #c0392b;
+        }
+
+        .submit-btn {
+            flex: 1;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="map-controls">
-            <button onclick="switchMap('maplibre')" class="map-btn active">MapLibre</button>
-            <button onclick="switchMap('leaflet')" class="map-btn">Leaflet</button>
+            <button onclick="switchMap('leaflet')" class="map-btn active">Leaflet</button>
             <button onclick="switchMap('openlayers')" class="map-btn">OpenLayers</button>
             <button onclick="switchMap('arcgis')" class="map-btn">ArcGIS</button>
+            <button onclick="switchMap('maplibre')" class="map-btn">MapLibre</button>
         </div>
 
         <div class="editor-container">
-            <div id="maplibre-container">
-                <div id="maplibre-map"></div>
-            </div>
-            <div id="leaflet-map" class="map-frame" style="display: none;"></div>
+            <div id="leaflet-map" class="map-frame" style="display: block;"></div>
             <div id="ol-map" class="map-frame"></div>
             <div id="arcgis-container">
                 <div id="arcgis-map"></div>
             </div>
+            <div id="maplibre-container">
+                <div id="maplibre-map"></div>
+            </div>
+        </div>
+
+        <div class="overlay" id="form-overlay"></div>
+
+        <div class="alert-form" id="alert-form">
+            <h3>Alert Properties</h3>
+            <form onsubmit="createAlert(event)">
+                <div class="form-group">
+                    <label for="alertType">Alert Type:</label>
+                    <select id="alertType" required>
+                        <option value="Closure">Closure</option>
+                        <option value="Safety warning">Safety warning</option>
+                        <option value="Notification">Notification</option>
+                        <option value="NPWS fire ban">NPWS fire ban</option>
+                        <option value="Total fire ban">Total fire ban</option>
+                        <option value="Bushfire">Bushfire</option>
+                        <option value="Hazard reduction burn">Hazard reduction burn</option>
+                        <option value="Catastrophic fire danger rating">Catastrophic fire danger rating</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="alertStatus">Status:</label>
+                    <select id="alertStatus" required>
+                        <option value="Confirmed">Confirmed</option>
+                        <option value="Predicted">Predicted</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="reviewFrequency">Review Frequency:</label>
+                    <select id="reviewFrequency" required>
+                        <option value="Daily">Daily</option>
+                        <option value="Weekly">Weekly</option>
+                        <option value="Monthly">Monthly</option>
+                        <option value="Quarterly">Quarterly</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="alertReason">Reason:</label>
+                    <input type="text" id="alertReason" required>
+                </div>
+                <div class="form-group">
+                    <label for="alertSubTypeOther">Additional Details:</label>
+                    <textarea id="alertSubTypeOther"></textarea>
+                </div>
+                <div class="form-buttons">
+                    <button type="submit" class="submit-btn">Create Alert</button>
+                    <button type="button" class="cancel-btn" onclick="closeForm()">Cancel</button>
+                </div>
+            </form>
         </div>
 
         <div class="geojson-output">
@@ -158,17 +301,20 @@
     <!-- MapLibre GL JS -->
     <script src='https://cdn.jsdelivr.net/npm/maplibre-gl@3.6.2/dist/maplibre-gl.js'></script>
     <!-- MapLibre Draw -->
-    <script src='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.0/mapbox-gl-draw.js'></script>
+    <script src='https://unpkg.com/@mapbox/mapbox-gl-draw@1.4.3/dist/mapbox-gl-draw.js'></script>
     
     <!-- Load scripts in order -->
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <!-- Leaflet VectorGrid JS -->
+    <script src="https://unpkg.com/leaflet.vectorgrid@latest/dist/Leaflet.VectorGrid.bundled.js"></script>
     
     <!-- OpenLayers JS -->
     <script src="https://cdn.jsdelivr.net/gh/openlayers/openlayers.github.io@master/en/v6.15.1/build/ol.js"></script>
     
     <!-- ArcGIS JS -->
+    <script src="https://unpkg.com/esri-leaflet@3.0.10/dist/esri-leaflet.js"></script>
     <script>
         var dojoConfig = {
             async: true
@@ -177,54 +323,29 @@
     <script src="https://js.arcgis.com/4.27/"></script>
 
     <script>
-        // First, define the alert GeoJSON data
-        const alertGeoJSON = {
-            "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "properties": {
-                        "id": "alert-001",
-                        "dtmPublished": "2024-01-15T08:00:00Z",
-                        "dtmLastModified": "2024-01-16T14:30:00Z",
-                        "dtmLastReviewed": "2024-01-16T14:30:00Z",
-                        "reviewFrequency": "Daily",
-                        "dtmNextReview": "2024-01-17T14:30:00Z",
-                        "alertType": "Bushfire",
-                        "alertStatus": "Confirmed",
-                        "alertReason": "Fire"
-                    },
-                    "geometry": {
-                        "type": "Polygon",
-                        "coordinates": [
-                            [
-                                [151.2093, -33.8688],
-                                [151.2193, -33.8688],
-                                [151.2193, -33.8588],
-                                [151.2093, -33.8588],
-                                [151.2093, -33.8688]
-                            ]
-                        ]
-                    }
-                }
-            ]
-        };
-
-        // Then initialize variables
+        // Initialize variables
         let maplibreMap, leafletMap, olMap;
         let drawnItems;
         let olInitialized = false;
         let arcgisInitialized = false;
         let maplibreInitialized = false;
         let leafletInitialized = false;
+        let currentMap = 'maplibre';
+        let draw; // Make draw globally accessible
 
-        // Initialize when the page loads - now starts with MapLibre
+        // Initialize when the page loads - change to Leaflet
         document.addEventListener('DOMContentLoaded', () => {
-            initMapLibreMap();
+            initLeafletMap();
+            leafletInitialized = true;
         });
 
         function initMapLibreMap() {
             if (maplibreInitialized) return;
+            
+            // Fix MapLibre control classes before initialization
+            MapboxDraw.constants.classes.CONTROL_BASE = "maplibregl-ctrl";
+            MapboxDraw.constants.classes.CONTROL_PREFIX = "maplibregl-ctrl-";
+            MapboxDraw.constants.classes.CONTROL_GROUP = "maplibregl-ctrl-group";
             
             maplibreMap = new maplibregl.Map({
                 container: 'maplibre-map',
@@ -235,7 +356,7 @@
                             type: 'raster',
                             tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
                             tileSize: 256,
-                            attribution: '© OpenStreetMap Contributors'
+                            attribution: '© OpenStreetMap contributors'
                         }
                     },
                     layers: [{
@@ -246,41 +367,82 @@
                         maxzoom: 19
                     }]
                 },
-                center: [151.2093, -33.8688], // Sydney
+                center: [151.2093, -33.8688],
                 zoom: 10
             });
 
-            // Add navigation controls
-            maplibreMap.addControl(new maplibregl.NavigationControl());
+            // Wait for map to load before adding controls
+            maplibreMap.on('load', () => {
+                // Add navigation controls
+                maplibreMap.addControl(new maplibregl.NavigationControl(), 'top-right');
 
-            // Initialize draw
-            const draw = new MapboxDraw({
-                displayControlsDefault: false,
-                controls: {
-                    point: true,
-                    line_string: true,
-                    polygon: true,
-                    trash: true
-                }
+                // Initialize draw
+                draw = new MapboxDraw({
+                    displayControlsDefault: false,
+                    controls: {
+                        point: true,
+                        line_string: true,
+                        polygon: true,
+                        trash: true
+                    }
+                });
+
+                // Add draw control
+                maplibreMap.addControl(draw, 'top-left');
+
+                // Add event listeners
+                maplibreMap.on('draw.create', (e) => {
+                    document.getElementById('form-overlay').style.display = 'block';
+                    document.getElementById('alert-form').style.display = 'block';
+                    const data = draw.getAll();
+                    document.getElementById('geojson-display').value = JSON.stringify(data, null, 2);
+                });
+
+                // Add createAlert handler for MapLibre
+                window.createAlert = function(event) {
+                    event.preventDefault();
+                    
+                    const data = draw.getAll();
+                    if (data.features.length === 0) {
+                        alert('Please draw an area on the map first');
+                        return;
+                    }
+
+                    // Create alert GeoJSON
+                    const alert = {
+                        type: "Feature",
+                        properties: {
+                            id: "alert-" + Date.now(),
+                            dtmPublished: new Date().toISOString(),
+                            dtmLastModified: new Date().toISOString(),
+                            dtmLastReviewed: new Date().toISOString(),
+                            reviewFrequency: document.getElementById('reviewFrequency').value,
+                            dtmNextReview: getNextReviewDate(document.getElementById('reviewFrequency').value),
+                            alertType: document.getElementById('alertType').value,
+                            alertSubTypeOther: document.getElementById('alertSubTypeOther').value || null,
+                            alertStatus: document.getElementById('alertStatus').value,
+                            whenAlertApplies: "Now, or at a future date/time",
+                            alertUpcomingStatus: document.getElementById('alertStatus').value,
+                            alertReason: document.getElementById('alertReason').value
+                        },
+                        geometry: data.features[0].geometry
+                    };
+
+                    // Update GeoJSON display
+                    document.getElementById('geojson-display').value = JSON.stringify(alert, null, 2);
+
+                    // Close form
+                    closeForm();
+                };
+
+                maplibreInitialized = true;
             });
-
-            // Add draw controls
-            maplibreMap.addControl(draw);
-
-            // Update GeoJSON when features are drawn
-            maplibreMap.on('draw.create', () => {
-                const data = draw.getAll();
-                document.getElementById('geojson-display').value = JSON.stringify(data, null, 2);
-            });
-
-            maplibreInitialized = true;
         }
 
         function initLeafletMap() {
-            // Initialize the map centered on NSW
             leafletMap = L.map('leaflet-map').setView([-33.8688, 151.2093], 10);
 
-            // Add OpenStreetMap as the basemap
+            // Add OpenStreetMap tiles
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 maxZoom: 19,
                 attribution: '© OpenStreetMap contributors'
@@ -310,48 +472,82 @@
             leafletMap.on('draw:created', function(event) {
                 const layer = event.layer;
                 drawnItems.addLayer(layer);
+                
+                // Show the form
+                document.getElementById('form-overlay').style.display = 'block';
+                document.getElementById('alert-form').style.display = 'block';
+
+                // Store the drawn layer for reference
+                currentDrawnLayer = layer;
+
+                // Update GeoJSON output
+                const geoJSONData = layer.toGeoJSON();
+                document.getElementById('geojson-display').value = JSON.stringify(geoJSONData, null, 2);
+            });
+
+            leafletMap.on('draw:edited', function(e) {
                 updateGeoJSONOutput();
             });
 
-            leafletMap.on('draw:edited', updateGeoJSONOutput);
-            leafletMap.on('draw:deleted', updateGeoJSONOutput);
+            leafletMap.on('draw:deleted', function(e) {
+                updateGeoJSONOutput();
+            });
+
+            // Add global variable for current drawn layer
+            let currentDrawnLayer = null;
+
+            // Update createAlert function to work with Leaflet
+            window.createAlert = function(event) {
+                event.preventDefault();
+                
+                if (!currentDrawnLayer) {
+                    alert('Please draw an area on the map first');
+                    return;
+                }
+
+                // Create alert GeoJSON
+                const alert = {
+                    type: "Feature",
+                    properties: {
+                        id: "alert-" + Date.now(),
+                        dtmPublished: new Date().toISOString(),
+                        dtmLastModified: new Date().toISOString(),
+                        dtmLastReviewed: new Date().toISOString(),
+                        reviewFrequency: document.getElementById('reviewFrequency').value,
+                        dtmNextReview: getNextReviewDate(document.getElementById('reviewFrequency').value),
+                        alertType: document.getElementById('alertType').value,
+                        alertSubTypeOther: document.getElementById('alertSubTypeOther').value || null,
+                        alertStatus: document.getElementById('alertStatus').value,
+                        whenAlertApplies: "Now, or at a future date/time",
+                        alertUpcomingStatus: document.getElementById('alertStatus').value,
+                        alertReason: document.getElementById('alertReason').value
+                    },
+                    geometry: currentDrawnLayer.toGeoJSON().geometry
+                };
+
+                // Update GeoJSON display
+                document.getElementById('geojson-display').value = JSON.stringify(alert, null, 2);
+
+                // Close form
+                closeForm();
+            };
         }
 
         function initOpenLayersMap() {
-            // Create vector source for features
             const source = new ol.source.Vector();
 
-            // Create vector layer
-            const vector = new ol.layer.Vector({
-                source: source,
-                style: new ol.style.Style({
-                    fill: new ol.style.Fill({
-                        color: 'rgba(255, 255, 255, 0.2)'
-                    }),
-                    stroke: new ol.style.Stroke({
-                        color: '#ffcc33',
-                        width: 2
-                    }),
-                    image: new ol.style.Circle({
-                        radius: 7,
-                        fill: new ol.style.Fill({
-                            color: '#ffcc33'
-                        })
-                    })
-                })
-            });
-
-            // Initialize the map
             olMap = new ol.Map({
                 target: 'ol-map',
                 layers: [
                     new ol.layer.Tile({
                         source: new ol.source.OSM()
                     }),
-                    vector
+                    new ol.layer.Vector({
+                        source: source
+                    })
                 ],
                 view: new ol.View({
-                    center: ol.proj.fromLonLat([151.2093, -33.8688]), // Sydney coordinates
+                    center: ol.proj.fromLonLat([151.2093, -33.8688]),
                     zoom: 10
                 })
             });
@@ -373,6 +569,9 @@
             });
             olMap.addInteraction(draw);
 
+            // Store current feature for form submission
+            let currentFeature = null;
+
             // Handle type changes
             typeSelect.onchange = function() {
                 olMap.removeInteraction(draw);
@@ -380,19 +579,79 @@
                     source: source,
                     type: typeSelect.value
                 });
+                
+                // Add drawend event listener to new draw interaction
+                draw.on('drawend', function(event) {
+                    currentFeature = event.feature;
+                    document.getElementById('form-overlay').style.display = 'block';
+                    document.getElementById('alert-form').style.display = 'block';
+                    
+                    // Update GeoJSON output
+                    const geojson = new ol.format.GeoJSON();
+                    const featureGeoJSON = geojson.writeFeatureObject(currentFeature, {
+                        dataProjection: 'EPSG:4326',
+                        featureProjection: 'EPSG:3857'
+                    });
+                    document.getElementById('geojson-display').value = JSON.stringify(featureGeoJSON, null, 2);
+                });
+
                 olMap.addInteraction(draw);
             };
 
-            // Update GeoJSON on feature add
-            source.on('addfeature', function() {
-                const features = source.getFeatures();
+            // Add initial drawend event listener
+            draw.on('drawend', function(event) {
+                currentFeature = event.feature;
+                document.getElementById('form-overlay').style.display = 'block';
+                document.getElementById('alert-form').style.display = 'block';
+                
+                // Update GeoJSON output
                 const geojson = new ol.format.GeoJSON();
-                const featuresGeoJSON = geojson.writeFeaturesObject(features, {
+                const featureGeoJSON = geojson.writeFeatureObject(currentFeature, {
                     dataProjection: 'EPSG:4326',
                     featureProjection: 'EPSG:3857'
                 });
-                document.getElementById('geojson-display').value = JSON.stringify(featuresGeoJSON, null, 2);
+                document.getElementById('geojson-display').value = JSON.stringify(featureGeoJSON, null, 2);
             });
+
+            // Update createAlert function to work with OpenLayers
+            window.createAlert = function(event) {
+                event.preventDefault();
+                
+                if (!currentFeature) {
+                    alert('Please draw an area on the map first');
+                    return;
+                }
+
+                // Create alert GeoJSON
+                const geojson = new ol.format.GeoJSON();
+                const alert = {
+                    type: "Feature",
+                    properties: {
+                        id: "alert-" + Date.now(),
+                        dtmPublished: new Date().toISOString(),
+                        dtmLastModified: new Date().toISOString(),
+                        dtmLastReviewed: new Date().toISOString(),
+                        reviewFrequency: document.getElementById('reviewFrequency').value,
+                        dtmNextReview: getNextReviewDate(document.getElementById('reviewFrequency').value),
+                        alertType: document.getElementById('alertType').value,
+                        alertSubTypeOther: document.getElementById('alertSubTypeOther').value || null,
+                        alertStatus: document.getElementById('alertStatus').value,
+                        whenAlertApplies: "Now, or at a future date/time",
+                        alertUpcomingStatus: document.getElementById('alertStatus').value,
+                        alertReason: document.getElementById('alertReason').value
+                    },
+                    geometry: geojson.writeGeometryObject(currentFeature.getGeometry(), {
+                        dataProjection: 'EPSG:4326',
+                        featureProjection: 'EPSG:3857'
+                    })
+                };
+
+                // Update GeoJSON display
+                document.getElementById('geojson-display').value = JSON.stringify(alert, null, 2);
+
+                // Close form
+                closeForm();
+            };
         }
 
         function initArcGISMap() {
@@ -400,10 +659,16 @@
                 "esri/Map",
                 "esri/views/MapView",
                 "esri/widgets/Sketch",
-                "esri/layers/GraphicsLayer"
-            ], function(Map, MapView, Sketch, GraphicsLayer) {
+                "esri/layers/GraphicsLayer",
+                "esri/layers/VectorTileLayer"
+            ], function(Map, MapView, Sketch, GraphicsLayer, VectorTileLayer) {
+                // Create NSW Vector Tile Layer
+                const nswBasemap = new VectorTileLayer({
+                    url: "https://portal.spatial.nsw.gov.au/vectortileservices/rest/services/Hosted/NSW_BaseMap_VectorTile/VectorTileServer"
+                });
+
                 const map = new Map({
-                    basemap: "topo-vector"
+                    layers: [nswBasemap]
                 });
 
                 const view = new MapView({
@@ -416,15 +681,77 @@
                 const layer = new GraphicsLayer();
                 map.add(layer);
 
+                // Store current graphic for form submission
+                let currentGraphic = null;
+
                 view.when(() => {
                     const sketch = new Sketch({
                         layer: layer,
                         view: view,
-                        creationMode: "single"
+                        creationMode: "single",
+                        availableCreateTools: ["point", "polyline", "polygon", "rectangle"]
                     });
+
+                    // Add sketch widget to the top right corner of the view
                     view.ui.add(sketch, "top-right");
+
+                    // Listen for sketch creation
+                    sketch.on("create", function(event) {
+                        if (event.state === "complete") {
+                            currentGraphic = event.graphic;
+                            
+                            // Show form
+                            document.getElementById('form-overlay').style.display = 'block';
+                            document.getElementById('alert-form').style.display = 'block';
+
+                            // Update GeoJSON output
+                            const geoJSON = {
+                                type: "Feature",
+                                geometry: event.graphic.geometry.toJSON(),
+                                properties: {}
+                            };
+                            document.getElementById('geojson-display').value = JSON.stringify(geoJSON, null, 2);
+                        }
+                    });
+
                     arcgisInitialized = true;
                 });
+
+                // Update createAlert function to work with ArcGIS
+                window.createAlert = function(event) {
+                    event.preventDefault();
+                    
+                    if (!currentGraphic) {
+                        alert('Please draw an area on the map first');
+                        return;
+                    }
+
+                    // Create alert GeoJSON
+                    const alert = {
+                        type: "Feature",
+                        properties: {
+                            id: "alert-" + Date.now(),
+                            dtmPublished: new Date().toISOString(),
+                            dtmLastModified: new Date().toISOString(),
+                            dtmLastReviewed: new Date().toISOString(),
+                            reviewFrequency: document.getElementById('reviewFrequency').value,
+                            dtmNextReview: getNextReviewDate(document.getElementById('reviewFrequency').value),
+                            alertType: document.getElementById('alertType').value,
+                            alertSubTypeOther: document.getElementById('alertSubTypeOther').value || null,
+                            alertStatus: document.getElementById('alertStatus').value,
+                            whenAlertApplies: "Now, or at a future date/time",
+                            alertUpcomingStatus: document.getElementById('alertStatus').value,
+                            alertReason: document.getElementById('alertReason').value
+                        },
+                        geometry: currentGraphic.geometry.toJSON()
+                    };
+
+                    // Update GeoJSON display
+                    document.getElementById('geojson-display').value = JSON.stringify(alert, null, 2);
+
+                    // Close form
+                    closeForm();
+                };
             });
         }
 
@@ -492,6 +819,31 @@
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
+        }
+
+        function getNextReviewDate(frequency) {
+            const date = new Date();
+            switch(frequency) {
+                case 'Daily':
+                    date.setDate(date.getDate() + 1);
+                    break;
+                case 'Weekly':
+                    date.setDate(date.getDate() + 7);
+                    break;
+                case 'Monthly':
+                    date.setMonth(date.getMonth() + 1);
+                    break;
+                case 'Quarterly':
+                    date.setMonth(date.getMonth() + 3);
+                    break;
+            }
+            return date.toISOString();
+        }
+
+        // Add close form function
+        function closeForm() {
+            document.getElementById('form-overlay').style.display = 'none';
+            document.getElementById('alert-form').style.display = 'none';
         }
     </script>
 </body>
