@@ -660,15 +660,31 @@
                 "esri/views/MapView",
                 "esri/widgets/Sketch",
                 "esri/layers/GraphicsLayer",
-                "esri/layers/VectorTileLayer"
-            ], function(Map, MapView, Sketch, GraphicsLayer, VectorTileLayer) {
+                "esri/layers/VectorTileLayer",
+                "esri/layers/FeatureLayer",
+                "esri/geometry/geometryEngine"  // Add geometryEngine for spatial operations
+            ], function(Map, MapView, Sketch, GraphicsLayer, VectorTileLayer, FeatureLayer, geometryEngine) {
                 // Create NSW Vector Tile Layer
                 const nswBasemap = new VectorTileLayer({
                     url: "https://portal.spatial.nsw.gov.au/vectortileservices/rest/services/Hosted/NSW_BaseMap_VectorTile/VectorTileServer"
                 });
 
+                // Create NPWS routes layer
+                const routesLayer = new FeatureLayer({
+                    url: "https://mapprod2.environment.nsw.gov.au/arcgis/rest/services/VisitorInfo/VisitorInfo/FeatureServer/2",
+                    outFields: ["*"],  // Get all fields
+                    renderer: {
+                        type: "simple",
+                        symbol: {
+                            type: "simple-line",
+                            color: "#ff7800",
+                            width: 2
+                        }
+                    }
+                });
+
                 const map = new Map({
-                    layers: [nswBasemap]
+                    layers: [nswBasemap, routesLayer]
                 });
 
                 const view = new MapView({
@@ -683,16 +699,16 @@
 
                 // Store current graphic for form submission
                 let currentGraphic = null;
+                let intersectedRoutes = null;
 
                 view.when(() => {
                     const sketch = new Sketch({
                         layer: layer,
                         view: view,
                         creationMode: "single",
-                        availableCreateTools: ["point", "polyline", "polygon", "rectangle"]
+                        availableCreateTools: ["point", "polyline", "polygon", "rectangle"]  // Add back point and polyline
                     });
 
-                    // Add sketch widget to the top right corner of the view
                     view.ui.add(sketch, "top-right");
 
                     // Listen for sketch creation
@@ -700,24 +716,84 @@
                         if (event.state === "complete") {
                             currentGraphic = event.graphic;
                             
-                            // Show form
-                            document.getElementById('form-overlay').style.display = 'block';
-                            document.getElementById('alert-form').style.display = 'block';
+                            // Only query routes if we're drawing a polygon or rectangle
+                            if (event.tool === "polygon" || event.tool === "rectangle") {
+                                // Query routes that intersect with the drawn polygon
+                                routesLayer.queryFeatures({
+                                    geometry: event.graphic.geometry,
+                                    spatialRelationship: "intersects",
+                                    outFields: ["*"],
+                                    returnGeometry: true
+                                }).then(function(results) {
+                                    // Show form regardless of intersection results
+                                    document.getElementById('form-overlay').style.display = 'block';
+                                    document.getElementById('alert-form').style.display = 'block';
 
-                            // Update GeoJSON output
-                            const geoJSON = {
-                                type: "Feature",
-                                geometry: event.graphic.geometry.toJSON(),
-                                properties: {}
-                            };
-                            document.getElementById('geojson-display').value = JSON.stringify(geoJSON, null, 2);
+                                    if (results.features.length > 0) {
+                                        // Clip the routes to the polygon and keep attributes
+                                        intersectedRoutes = results.features.map(feature => {
+                                            const clippedGeometry = geometryEngine.clip(
+                                                feature.geometry,
+                                                event.graphic.geometry
+                                            );
+                                            
+                                            return {
+                                                type: "Feature",
+                                                geometry: clippedGeometry.toJSON(),
+                                                properties: feature.attributes
+                                            };
+                                        });
+
+                                        // Create combined GeoJSON with polygon and clipped routes
+                                        const combinedGeoJSON = {
+                                            type: "FeatureCollection",
+                                            features: [
+                                                {
+                                                    type: "Feature",
+                                                    geometry: event.graphic.geometry.toJSON(),
+                                                    properties: {}
+                                                },
+                                                ...intersectedRoutes
+                                            ]
+                                        };
+
+                                        // Update GeoJSON output
+                                        document.getElementById('geojson-display').value = 
+                                            JSON.stringify(combinedGeoJSON, null, 2);
+                                    } else {
+                                        // If no intersections, just show the polygon
+                                        const geoJSON = {
+                                            type: "Feature",
+                                            geometry: event.graphic.geometry.toJSON(),
+                                            properties: {}
+                                        };
+                                        document.getElementById('geojson-display').value = JSON.stringify(geoJSON, null, 2);
+                                    }
+                                }).catch(function(error) {
+                                    console.error("Error querying routes:", error);
+                                    // Show form even if query fails
+                                    document.getElementById('form-overlay').style.display = 'block';
+                                    document.getElementById('alert-form').style.display = 'block';
+                                });
+                            } else {
+                                // For points and lines, just show the form with the drawn geometry
+                                document.getElementById('form-overlay').style.display = 'block';
+                                document.getElementById('alert-form').style.display = 'block';
+
+                                const geoJSON = {
+                                    type: "Feature",
+                                    geometry: event.graphic.geometry.toJSON(),
+                                    properties: {}
+                                };
+                                document.getElementById('geojson-display').value = JSON.stringify(geoJSON, null, 2);
+                            }
                         }
                     });
 
                     arcgisInitialized = true;
                 });
 
-                // Update createAlert function to work with ArcGIS
+                // Update createAlert function to include clipped routes
                 window.createAlert = function(event) {
                     event.preventDefault();
                     
@@ -727,27 +803,45 @@
                     }
 
                     // Create alert GeoJSON
-                    const alert = {
-                        type: "Feature",
-                        properties: {
-                            id: "alert-" + Date.now(),
-                            dtmPublished: new Date().toISOString(),
-                            dtmLastModified: new Date().toISOString(),
-                            dtmLastReviewed: new Date().toISOString(),
-                            reviewFrequency: document.getElementById('reviewFrequency').value,
-                            dtmNextReview: getNextReviewDate(document.getElementById('reviewFrequency').value),
-                            alertType: document.getElementById('alertType').value,
-                            alertSubTypeOther: document.getElementById('alertSubTypeOther').value || null,
-                            alertStatus: document.getElementById('alertStatus').value,
-                            whenAlertApplies: "Now, or at a future date/time",
-                            alertUpcomingStatus: document.getElementById('alertStatus').value,
-                            alertReason: document.getElementById('alertReason').value
-                        },
-                        geometry: currentGraphic.geometry.toJSON()
+                    const featureCollection = {
+                        type: "FeatureCollection",
+                        features: [
+                            {
+                                type: "Feature",
+                                properties: {
+                                    id: "alert-" + Date.now(),
+                                    dtmPublished: new Date().toISOString(),
+                                    dtmLastModified: new Date().toISOString(),
+                                    dtmLastReviewed: new Date().toISOString(),
+                                    reviewFrequency: document.getElementById('reviewFrequency').value,
+                                    dtmNextReview: getNextReviewDate(document.getElementById('reviewFrequency').value),
+                                    alertType: document.getElementById('alertType').value,
+                                    alertSubTypeOther: document.getElementById('alertSubTypeOther').value || null,
+                                    alertStatus: document.getElementById('alertStatus').value,
+                                    whenAlertApplies: "Now, or at a future date/time",
+                                    alertUpcomingStatus: document.getElementById('alertStatus').value,
+                                    alertReason: document.getElementById('alertReason').value,
+                                    featureType: 'alert'
+                                },
+                                geometry: currentGraphic.geometry.toJSON()
+                            }
+                        ]
                     };
 
+                    // Add clipped routes if they exist
+                    if (intersectedRoutes && intersectedRoutes.length > 0) {
+                        featureCollection.features.push(...intersectedRoutes.map(route => ({
+                            type: "Feature",
+                            properties: {
+                                ...route.properties,
+                                featureType: 'clippedRoute'
+                            },
+                            geometry: route.geometry
+                        })));
+                    }
+
                     // Update GeoJSON display
-                    document.getElementById('geojson-display').value = JSON.stringify(alert, null, 2);
+                    document.getElementById('geojson-display').value = JSON.stringify(featureCollection, null, 2);
 
                     // Close form
                     closeForm();
